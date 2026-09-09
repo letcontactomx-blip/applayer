@@ -1,0 +1,110 @@
+name: Deploy to GitHub Pages
+
+# Publica el sitio con los BINARIOS REALES de Git LFS (a.bin, etc.).
+# GitHub Pages servido directamente desde una rama NO resuelve punteros LFS:
+# entrega el archivo de texto de ~130 bytes. Este workflow hace checkout con
+# lfs:true, materializa el contenido real y lo sube como artefacto de Pages,
+# que sí se sirve tal cual (bytes reales).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un solo despliegue a la vez; no cancela uno en curso (subir ~400 MB tarda).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (sin LFS todavía)
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Calcular IDs de los objetos LFS
+        run: git lfs ls-files -l | awk '{print $1}' | sort > .lfs-oids.txt
+
+      - name: Restaurar caché de objetos LFS
+        id: lfs-cache
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ runner.os }}-${{ hashFiles('.lfs-oids.txt') }}
+
+      # Solo descarga de LFS lo que NO esté ya en caché.
+      # Primer despliegue (o cuando cambie a.bin): baja ~382 MB y cuenta contra
+      # la cuota de ancho de banda de LFS (1 GiB/mes en el plan gratis).
+      # Despliegues siguientes con a.bin sin cambios: 0 bytes de LFS.
+      - name: Traer binarios reales de LFS
+        run: git lfs pull
+
+      - name: Verificar que NO son punteros LFS
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            local f="$1" min="$2"
+            if [ ! -f "$f" ]; then echo "::error::falta $f"; fail=1; return; fi
+            local size
+            size=$(stat -c%s "$f")
+            printf '%-32s %12d bytes\n' "$f" "$size"
+            if [ "$size" -lt "$min" ]; then
+              echo "::error::$f parece un puntero LFS o está truncado ($size < $min)"
+              fail=1
+            fi
+            if head -c 64 "$f" | grep -q 'git-lfs.github.com/spec'; then
+              echo "::error::$f empieza con la cabecera de un puntero Git LFS"
+              fail=1
+            fi
+          }
+          check a.bin                     104857600   # > 100 MB
+          check a.cue                     20          # el .cue real (no LFS)
+          check data/bios/scph5501.bin    400000      # BIOS ~512 KB
+          check data/emulator.min.js      100000
+          check data/cores/mednafen_psx_hw-wasm.data 100000
+          [ "$fail" -eq 0 ] || { echo "Hay archivos que son punteros LFS. Revisa lfs:true / el objeto en el servidor."; exit 1; }
+
+      - name: Ensamblar el sitio en _site/
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp -r index.html a.cue a.bin data _site/
+          touch _site/.nojekyll
+          # El límite de un sitio de Pages es 1 GB. data/cores/ trae ~180 cores
+          # (~294 MB) de todas las consolas; para PS1 solo hacen falta estos.
+          # Comenta este bloque si algún día usas otro core.
+          find _site/data/cores -maxdepth 1 -name '*.data' \
+            ! -name 'mednafen_psx_hw-*' ! -name 'pcsx_rearmed-*' -delete
+          echo "Tamaño total del sitio:"; du -sh _site
+          echo "Tamaño de a.bin publicado:"; ls -l _site/a.bin
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+        with:
+          # Habilita Pages en modo "GitHub Actions" automáticamente si aún no lo está.
+          enablement: true
+
+      - name: Subir artefacto de Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Desplegar a GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

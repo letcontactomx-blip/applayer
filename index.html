@@ -102,34 +102,45 @@
             }
         };
 
-        // Configuración de la ISO (alojada como asset de GitHub Release,
-        // porque GitHub Pages NO sirve archivos de Git LFS: devuelve el puntero de texto)
-        const RELEASE_BASE = 'https://github.com/letcontactomx-blip/applayer/releases/download/pplayer/';
-        const ISO_FILE = RELEASE_BASE + 'a.bin';
+        // Configuración de la ISO.
+        // El sitio lo publica el workflow .github/workflows/deploy-pages.yml, que hace
+        // checkout con lfs:true y sube los binarios REALES como artefacto de Pages.
+        // Por eso estas rutas son del mismo dominio github.io (no del repo ni de un Release).
+        const ISO_FILE = 'a.cue';              // el .cue apunta a a.bin (mismo directorio)
         const DATA_PATH = 'data/';
         const BIOS_URL = 'data/bios/scph5501.bin';
 
-        // Paso 1: Verificar existencia de la ISO en GitHub Pages
-        log(`Verificando disponibilidad de la ISO: ${ISO_FILE}...`);
+        // Paso 1: Verificar que el sitio publicado tenga los binarios REALES (no punteros LFS)
+        log(`Verificando disponibilidad de ${ISO_FILE} y a.bin...`);
 
-        fetch(ISO_FILE, { method: 'HEAD' })
-            .then(res => {
-                if (res.ok) {
-                    const len = res.headers.get('content-length');
-                    const size = len ? `${(len / (1024 * 1024)).toFixed(2)} MB` : 'desconocido';
-                    log(`¡ISO Encontrada! Tamaño detectado: ${size}`, 'success');
-                    if (len && Number(len) < 10000) {
-                        log(`ADVERTENCIA: el archivo es sospechosamente pequeño (${len} bytes). ¿Es un puntero de Git LFS en vez del binario?`, 'error');
+        Promise.all([
+            fetch(ISO_FILE, { method: 'HEAD' }),
+            fetch('a.bin', { method: 'HEAD' })
+        ])
+            .then(([cue, bin]) => {
+                if (!cue.ok) {
+                    if (cue.status === 404) {
+                        log(`ERROR 404: "${ISO_FILE}" no está en el sitio. ¿Corrió el workflow deploy-pages y Settings > Pages usa "GitHub Actions" como origen?`, 'error');
+                    } else {
+                        log(`Error HTTP ${cue.status} al buscar ${ISO_FILE}.`, 'error');
                     }
-                    iniciarEmulador();
-                } else if (res.status === 404) {
-                    log(`ERROR 404: "${ISO_FILE}" no existe. Sube a.bin como asset de la release "pplayer".`, 'error');
-                } else {
-                    log(`Error HTTP al buscar la ISO. Código de respuesta: ${res.status}`, 'error');
+                    return;
                 }
+                if (!bin.ok) {
+                    log(`ERROR HTTP ${bin.status}: no se encuentra a.bin en el sitio publicado.`, 'error');
+                    return;
+                }
+                const len = Number(bin.headers.get('content-length') || 0);
+                const size = len ? `${(len / (1024 * 1024)).toFixed(2)} MB` : 'desconocido';
+                log(`a.bin encontrado. Tamaño: ${size}`, len && len > 100 * 1024 * 1024 ? 'success' : 'error');
+                if (len && len < 1024 * 1024) {
+                    log(`ADVERTENCIA: a.bin pesa ${len} bytes: es un PUNTERO de Git LFS, no el binario. El checkout del workflow necesita lfs: true.`, 'error');
+                    return;
+                }
+                iniciarEmulador();
             })
             .catch(err => {
-                log(`Error intentando conectar con la ISO: ${err.message}`, 'error');
+                log(`Error intentando conectar con los archivos del juego: ${err.message}`, 'error');
             });
 
         function iniciarEmulador() {
