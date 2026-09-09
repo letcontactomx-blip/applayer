@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Player</title>
+    <title>App Player Debug</title>
     <style>
         body, html {
             margin: 0;
@@ -12,43 +11,136 @@
             width: 100%;
             height: 100%;
             background-color: #000;
+            color: #00ff00;
+            font-family: monospace;
             overflow: hidden;
         }
         #game {
             width: 100vw;
             height: 100vh;
+            display: none; /* Oculto hasta que todo cargue correctamente */
         }
+        #debug-console {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            color: #00ff00;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            z-index: 9999;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .error { color: #ff3333; font-weight: bold; }
+        .success { color: #33ff33; }
+        .info { color: #33ffff; }
     </style>
 </head>
 <body>
+
+    <!-- Consola de diagnóstico en pantalla -->
+    <div id="debug-console">
+        <h3>=== CONSOLA DE DIAGNÓSTICO EMULATORJS ===</h3>
+        <p class="info">[+] Iniciando comprobaciones del sistema...</p>
+    </div>
+
+    <!-- Contenedor del emulador -->
     <div id="game"></div>
 
     <script>
-        // Configuración de EmulatorJS
-        EJS_player = '#game';
-        EJS_core = 'psx';
-        EJS_gameName = 'Digimon World';
-        EJS_color = '#0066ff';
-        EJS_startOnLoaded = true;
+        const debug = document.getElementById('debug-console');
 
-        // RUTA LOCAL: Carga el emulador desde tu propio servidor de GitHub Pages
-        EJS_pathtoEJS = 'data/';
+        function log(msg, type = 'info') {
+            const p = document.createElement('p');
+            p.className = type;
+            p.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            debug.appendChild(p);
+            debug.scrollTop = debug.scrollHeight;
+        }
 
-        // REEMPLAZA EL ID DE ABAJO POR TU ID DE GOOGLE DRIVE:
-        EJS_gameUrl = 'a.bin';
+        // Capturar errores no controlados de JavaScript
+        window.onerror = function(msg, url, lineNo, columnNo, error) {
+            log(`ERROR DE SCRIPT: ${msg} (Línea: ${lineNo} en ${url})`, 'error');
+            return false;
+        };
 
-        // Mapeo básico de controles teclado
-        EJS_defaultControls = {
-            0: {
-                0: 88, // Botones y direcciones
-                1: 90,
-                2: 65,
-                3: 83
+        // Capturar errores de red o peticiones fallidas (fetch / XHR)
+        const originalFetch = window.fetch;
+        window.fetch = async function(...args) {
+            log(`Solicitando recurso: ${args[0]}`);
+            try {
+                const response = await originalFetch(...args);
+                if (!response.ok) {
+                    log(`ERROR DE DESCARGA HTTP ${response.status}: ${args[0]}`, 'error');
+                } else {
+                    log(`Cargado exitosamente: ${args[0]}`, 'success');
+                }
+                return response;
+            } catch (err) {
+                log(`FALLO DE RED AL CARGAR: ${args[0]} (${err.message})`, 'error');
+                throw err;
             }
         };
-    </script>
 
-    <!-- Carga del script ejecutor desde tu repositorio local -->
-    <script src="data/loader.js"></script>
+        // Configuración de la ISO (Asegúrate de que este nombre sea EXACTO)
+        const ISO_FILE = 'a.bin';
+        const DATA_PATH = 'data/';
+
+        // Paso 1: Verificar existencia de la ISO en GitHub Pages
+        log(`Verificando disponibilidad de la ISO: ${ISO_FILE}...`);
+        
+        fetch(ISO_FILE, { method: 'HEAD' })
+            .then(res => {
+                if (res.ok) {
+                    const sizeMB = (res.headers.get('content-length') / (1024 * 1024)).toFixed(2);
+                    log(`¡ISO Encontrada! Tamaño detectado: ${sizeMB} MB`, 'success');
+                    iniciarEmulador();
+                } else if (res.status === 404) {
+                    log(`ERROR 404: El archivo "${ISO_FILE}" no se encuentra en la raíz de tu GitHub Pages.`, 'error');
+                    log(`Sugerencia: Revisa si el nombre del archivo en tu repositorio incluye mayúsculas o espacio.`, 'info');
+                } else {
+                    log(`Error HTTP al buscar la ISO. Código de respuesta: ${res.status}`, 'error');
+                }
+            })
+            .catch(err => {
+                log(`Error intentando conectar con la ISO: ${err.message}`, 'error');
+            });
+
+        function iniciarEmulador() {
+            log(`Iniciando configuración de EmulatorJS...`, 'info');
+
+            window.EJS_player = '#game';
+            window.EJS_core = 'psx';
+            window.EJS_gameName = 'Digimon World';
+            window.EJS_color = '#0066ff';
+            window.EJS_startOnLoaded = true;
+            window.EJS_pathtoEJS = DATA_PATH;
+            window.EJS_gameUrl = ISO_FILE;
+
+            // Intentar cargar loader.js
+            log(`Cargando script principal: ${DATA_PATH}loader.js...`);
+            const script = document.createElement('script');
+            script.src = `${DATA_PATH}loader.js`;
+
+            script.onload = () => {
+                log(`loader.js cargado correctamente. Iniciando núcleo de PS1...`, 'success');
+                // Ocultar consola después de 5 segundos si todo fue bien
+                setTimeout(() => {
+                    document.getElementById('game').style.display = 'block';
+                    debug.style.display = 'none';
+                }, 5000);
+            };
+
+            script.onerror = () => {
+                log(`ERROR CRÍTICO: No se pudo cargar el archivo "${DATA_PATH}loader.js". Revisa la estructura de la carpeta data/`, 'error');
+            };
+
+            document.body.appendChild(script);
+        }
+    </script>
 </body>
 </html>
