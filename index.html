@@ -119,12 +119,12 @@
         // El sitio lo publica el workflow .github/workflows/deploy-pages.yml, que hace
         // checkout con lfs:true y sube los binarios REALES como artefacto de Pages.
         // Por eso estas rutas son del mismo dominio github.io (no del repo ni de un Release).
-        // El juego se carga con el .cue REAL (TRACK 01 MODE2/2352, correcto para PS1).
-        // El .bin que referencia el .cue se inyecta aparte con EJS_externalFiles,
-        // porque EmulatorJS no descarga solo el FILE de un .cue suelto.
-        // (Apuntar directo al .bin hacía que EmulatorJS generara un .cue MODE1/2352
-        //  incorrecto -> pantalla negra.)
-        const ISO_FILE = 'a.cue';
+        // EJS_gameUrl apunta al .bin. EmulatorJS le genera el .cue solo; nuestra
+        // copia de data/emulator.min.js está parcheada para generarlo como
+        // MODE2/2352 (correcto para discos de PS1; el original ponía MODE1/2352).
+        // No usamos EJS_externalFiles: cargar el .bin de 382 MB dos veces en
+        // memoria hacía que se atascara al descomprimir el núcleo.
+        const ISO_FILE = 'a.bin';
         const DATA_PATH = 'data/';
         const BIOS_URL = 'data/bios/scph5501.bin';
 
@@ -148,9 +148,12 @@
                     log(`ERROR HTTP ${bin.status}: no se encuentra a.bin en el sitio publicado.`, 'error');
                     return;
                 }
+                // Nota: el navegador pide con gzip, así que content-length puede ser
+                // el tamaño COMPRIMIDO (menor que los 364 MB reales). Solo sirve para
+                // distinguir "binario real" de "puntero LFS de ~130 bytes".
                 const len = Number(bin.headers.get('content-length') || 0);
-                const size = len ? `${(len / (1024 * 1024)).toFixed(2)} MB` : 'desconocido';
-                log(`a.bin encontrado. Tamaño: ${size}`, len && len > 100 * 1024 * 1024 ? 'success' : 'error');
+                const size = len ? `${(len / (1024 * 1024)).toFixed(2)} MB (puede venir comprimido)` : 'desconocido';
+                log(`a.bin encontrado. Tamaño transferido: ${size}`, len && len > 10 * 1024 * 1024 ? 'success' : 'error');
                 if (len && len < 1024 * 1024) {
                     log(`ADVERTENCIA: a.bin pesa ${len} bytes: es un PUNTERO de Git LFS, no el binario. El checkout del workflow necesita lfs: true.`, 'error');
                     return;
@@ -170,11 +173,8 @@
             window.EJS_color = '#0066ff';
             window.EJS_startOnLoaded = true;
             window.EJS_pathtodata = DATA_PATH;   // nombre correcto de la variable (antes: EJS_pathtoEJS, inexistente)
-            window.EJS_gameUrl = ISO_FILE;       // a.cue
+            window.EJS_gameUrl = ISO_FILE;       // a.bin
             window.EJS_biosUrl = BIOS_URL;
-            // Inyecta a.bin en el sistema de archivos del emulador, junto al .cue,
-            // que lo referencia como FILE "a.bin".
-            window.EJS_externalFiles = { 'a.bin': 'a.bin' };
 
 
             // Intentar cargar loader.js
