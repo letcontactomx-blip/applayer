@@ -119,9 +119,12 @@
         // El sitio lo publica el workflow .github/workflows/deploy-pages.yml, que hace
         // checkout con lfs:true y sube los binarios REALES como artefacto de Pages.
         // Por eso estas rutas son del mismo dominio github.io (no del repo ni de un Release).
-        // Apuntamos directo al .bin (disco de 1 sola pista). EmulatorJS le genera
-        // el .cue internamente; así evitamos depender de que descargue el FILE del .cue.
-        const ISO_FILE = 'a.bin';
+        // El juego se carga con el .cue REAL (TRACK 01 MODE2/2352, correcto para PS1).
+        // El .bin que referencia el .cue se inyecta aparte con EJS_externalFiles,
+        // porque EmulatorJS no descarga solo el FILE de un .cue suelto.
+        // (Apuntar directo al .bin hacía que EmulatorJS generara un .cue MODE1/2352
+        //  incorrecto -> pantalla negra.)
+        const ISO_FILE = 'a.cue';
         const DATA_PATH = 'data/';
         const BIOS_URL = 'data/bios/scph5501.bin';
 
@@ -167,8 +170,11 @@
             window.EJS_color = '#0066ff';
             window.EJS_startOnLoaded = true;
             window.EJS_pathtodata = DATA_PATH;   // nombre correcto de la variable (antes: EJS_pathtoEJS, inexistente)
-            window.EJS_gameUrl = ISO_FILE;
+            window.EJS_gameUrl = ISO_FILE;       // a.cue
             window.EJS_biosUrl = BIOS_URL;
+            // Inyecta a.bin en el sistema de archivos del emulador, junto al .cue,
+            // que lo referencia como FILE "a.bin".
+            window.EJS_externalFiles = { 'a.bin': 'a.bin' };
 
 
             // Intentar cargar loader.js
