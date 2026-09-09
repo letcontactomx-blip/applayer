@@ -106,7 +106,9 @@
         // El sitio lo publica el workflow .github/workflows/deploy-pages.yml, que hace
         // checkout con lfs:true y sube los binarios REALES como artefacto de Pages.
         // Por eso estas rutas son del mismo dominio github.io (no del repo ni de un Release).
-        const ISO_FILE = 'a.cue';              // el .cue apunta a a.bin (mismo directorio)
+        // Apuntamos directo al .bin (disco de 1 sola pista). EmulatorJS le genera
+        // el .cue internamente; así evitamos depender de que descargue el FILE del .cue.
+        const ISO_FILE = 'a.bin';
         const DATA_PATH = 'data/';
         const BIOS_URL = 'data/bios/scph5501.bin';
 
