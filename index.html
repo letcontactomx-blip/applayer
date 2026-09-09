@@ -21,8 +21,6 @@
         #game {
             width: 100vw;
             height: 100vh;
-            display: none;
-            /* Oculto hasta que todo cargue correctamente */
         }
 
         #debug-console {
@@ -39,6 +37,21 @@
             z-index: 9999;
             font-size: 14px;
             line-height: 1.5;
+        }
+
+        /* Cuando EmulatorJS ya tiene su propia UI (evento "ready"): encoger la
+           consola a una esquina para NO tapar la barra de progreso del emulador. */
+        #debug-console.mini {
+            top: auto;
+            left: 8px;
+            bottom: 8px;
+            width: 360px;
+            max-width: 60vw;
+            height: 38%;
+            padding: 8px 10px;
+            font-size: 11px;
+            border: 1px solid #0f0;
+            opacity: 0.9;
         }
 
         .error {
@@ -171,14 +184,16 @@
                 log(`ERROR CRÍTICO: No se pudo cargar "${DATA_PATH}loader.js". Revisa la carpeta data/`, 'error');
             };
 
-            // Ocultar la consola solo cuando el emulador arranca de verdad, no al cargar loader.js
-            window.EJS_ready = () => log(`Emulador listo.`, 'success');
+            // "ready" = EmulatorJS ya montó su UI y va a descargar núcleo + BIOS + ISO.
+            // Encogemos la consola para que se vea la barra de progreso de EmulatorJS
+            // (la descarga de la ISO son ~364 MB y puede tardar varios minutos).
+            window.EJS_ready = () => {
+                log(`Emulador listo. Descargando núcleo, BIOS e ISO (~364 MB)... mira la barra de progreso de EmulatorJS.`, 'success');
+                debug.classList.add('mini');
+            };
             window.EJS_onGameStart = () => {
                 log(`¡Juego iniciado!`, 'success');
-                setTimeout(() => {
-                    document.getElementById('game').style.display = 'block';
-                    debug.style.display = 'none';
-                }, 1500);
+                setTimeout(() => { debug.style.display = 'none'; }, 1500);
             };
 
             document.body.appendChild(script);
