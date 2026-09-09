@@ -102,10 +102,12 @@
             }
         };
 
-        // Configuración de la ISO (Asegúrate de que este nombre sea EXACTO)
-        const ISO_FILE = 'a.cue';
+        // Configuración de la ISO (alojada como asset de GitHub Release,
+        // porque GitHub Pages NO sirve archivos de Git LFS: devuelve el puntero de texto)
+        const RELEASE_BASE = 'https://github.com/letcontactomx-blip/applayer/releases/download/pplayer/';
+        const ISO_FILE = RELEASE_BASE + 'a.bin';
         const DATA_PATH = 'data/';
-        const EJS_biosUrl = 'data/bios/scph5501.bin';
+        const BIOS_URL = 'data/bios/scph5501.bin';
 
         // Paso 1: Verificar existencia de la ISO en GitHub Pages
         log(`Verificando disponibilidad de la ISO: ${ISO_FILE}...`);
@@ -113,12 +115,15 @@
         fetch(ISO_FILE, { method: 'HEAD' })
             .then(res => {
                 if (res.ok) {
-                    const sizeMB = (res.headers.get('content-length') / (1024 * 1024)).toFixed(2);
-                    log(`¡ISO Encontrada! Tamaño detectado: ${sizeMB} MB`, 'success');
+                    const len = res.headers.get('content-length');
+                    const size = len ? `${(len / (1024 * 1024)).toFixed(2)} MB` : 'desconocido';
+                    log(`¡ISO Encontrada! Tamaño detectado: ${size}`, 'success');
+                    if (len && Number(len) < 10000) {
+                        log(`ADVERTENCIA: el archivo es sospechosamente pequeño (${len} bytes). ¿Es un puntero de Git LFS en vez del binario?`, 'error');
+                    }
                     iniciarEmulador();
                 } else if (res.status === 404) {
-                    log(`ERROR 404: El archivo "${ISO_FILE}" no se encuentra en la raíz de tu GitHub Pages.`, 'error');
-                    log(`Sugerencia: Revisa si el nombre del archivo en tu repositorio incluye mayúsculas o espacio.`, 'info');
+                    log(`ERROR 404: "${ISO_FILE}" no existe. Sube a.bin como asset de la release "pplayer".`, 'error');
                 } else {
                     log(`Error HTTP al buscar la ISO. Código de respuesta: ${res.status}`, 'error');
                 }
@@ -132,12 +137,12 @@
 
             window.EJS_player = '#game';
             window.EJS_core = 'psx';
-            window.EJS_gameName = 'Dd';
+            window.EJS_gameName = 'Digimon World (USA)';
             window.EJS_color = '#0066ff';
             window.EJS_startOnLoaded = true;
-            window.EJS_pathtoEJS = DATA_PATH;
+            window.EJS_pathtodata = DATA_PATH;   // nombre correcto de la variable (antes: EJS_pathtoEJS, inexistente)
             window.EJS_gameUrl = ISO_FILE;
-            window.EJS_biosUrl = 'data/bios/scph5501.bin';
+            window.EJS_biosUrl = BIOS_URL;
 
 
             // Intentar cargar loader.js
@@ -146,16 +151,21 @@
             script.src = `${DATA_PATH}loader.js`;
 
             script.onload = () => {
-                log(`loader.js cargado correctamente. Iniciando núcleo de PS1...`, 'success');
-                // Ocultar consola después de 5 segundos si todo fue bien
-                setTimeout(() => {
-                    document.getElementById('game').style.display = 'block';
-                    debug.style.display = 'none';
-                }, 5000);
+                log(`loader.js cargado. Descargando núcleo PS1, BIOS e ISO (~364 MB)...`, 'success');
             };
 
             script.onerror = () => {
-                log(`ERROR CRÍTICO: No se pudo cargar el archivo "${DATA_PATH}loader.js". Revisa la estructura de la carpeta data/`, 'error');
+                log(`ERROR CRÍTICO: No se pudo cargar "${DATA_PATH}loader.js". Revisa la carpeta data/`, 'error');
+            };
+
+            // Ocultar la consola solo cuando el emulador arranca de verdad, no al cargar loader.js
+            window.EJS_ready = () => log(`Emulador listo.`, 'success');
+            window.EJS_onGameStart = () => {
+                log(`¡Juego iniciado!`, 'success');
+                setTimeout(() => {
+                    document.getElementById('game').style.display = 'block';
+                    debug.style.display = 'none';
+                }, 1500);
             };
 
             document.body.appendChild(script);
